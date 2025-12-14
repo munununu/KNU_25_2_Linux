@@ -10,7 +10,8 @@
 #include <time.h>
 
 #define PROCESS_NUM 10
-#define TIME_QUANTUM 50
+#define TIME_QUANTUM 1
+#define CS_OVERHEAD 1
 
 enum State { READY, RUNNING, SLEEP, DONE };
 
@@ -159,7 +160,29 @@ void parent_kernel(int msgid) {
                 }
 
                 if (pcb_table[idx].state == READY && pcb_table[idx].remaining_quantum > 0) {
-                    current_proc_idx = idx;
+         	   
+		    if (CS_OVERHEAD > 0) {
+                        printf("[Tick %d] !!! Context Switch Overhead (%d ticks) !!!\n", sim_time, CS_OVERHEAD);
+                        
+                        // 오버헤드 시간만큼 강제로 시간을 흘려보냄
+                        for (int o = 0; o < CS_OVERHEAD; o++) {
+                            sim_time++; 
+                            
+                            // 시간이 흐르는 동안 Sleep 중인 프로세스 처리 (I/O는 계속 진행)
+                            for (int k = 0; k < PROCESS_NUM; k++) {
+                                if (pcb_table[k].state == SLEEP) {
+                                    pcb_table[k].io_wait_remain--;
+                                    if (pcb_table[k].io_wait_remain <= 0) {
+                                        pcb_table[k].state = READY;
+                                        pcb_table[k].ready_entry_tick = sim_time; // 깨어난 시간 기록
+                                        printf("[Tick %d] Proc %d: Wakeup -> READY (during overhead)\n", sim_time, k);
+                                    }
+                                }
+                            }
+                        }
+                    }
+	
+		    current_proc_idx = idx;
                     search_start = (idx + 1) % PROCESS_NUM;
                     
                     int wait = sim_time - pcb_table[current_proc_idx].ready_entry_tick;
